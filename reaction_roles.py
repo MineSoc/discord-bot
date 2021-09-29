@@ -63,8 +63,9 @@ class ReactionRoles(commands.Cog):
     @commands.has_permissions(manage_channels=True)
     @commands.command(help="Add reaction to reaction message")
     async def reaction_add(self, ctx, channel: discord.TextChannel, message_id, emote, role: discord.Role, description=None):
+        print(f"Adding role {role.name} for emoji {emote}")
         message: discord.Message = await channel.fetch_message(message_id)
-        if message.author == self.bot:
+        if message.author == self.bot.user:
             embed: discord.Embed = message.embeds[0]
             field: EmbedProxy = embed.fields[0]
             embed.remove_field(0)
