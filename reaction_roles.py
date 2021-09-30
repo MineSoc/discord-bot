@@ -17,6 +17,14 @@ except (FileNotFoundError, json.JSONDecodeError) as ex:
     with open("reaction_roles.json", "w") as file:
         json.dump({}, file)
 
+class ReferenceAlreadyExists(Exception):
+    def __init__(self, str):
+        super().__init__(str)
+
+
+class NoMessageExists(Exception):
+    def __init__(self, str):
+        super().__init__(str)
 
 # Store unsaved data on exit
 @atexit.register
@@ -55,28 +63,38 @@ class ReactionRoles(commands.Cog):
 
     @commands.has_permissions(manage_channels=True)
     @commands.command(help="Create message to add reactions to")
-    async def reaction(self, ctx, channel: discord.TextChannel, title, message):
+    async def reaction(self, ctx, channel: discord.TextChannel, reference, title, message):
         embed = discord.Embed(title=title, description=message)
         embed.add_field(name="Roles", value="_ _", inline=False)
-        await channel.send(embed=embed)
+        msg = await channel.send(embed=embed)
+        if not self.add_message(ctx.guild.id, msg, reference):
+            await msg.delete()
+            raise ReferenceAlreadyExists(f"A reaction message with reference `{reference}` already exists.")
 
     @commands.has_permissions(manage_channels=True)
     @commands.command(help="Add reaction to reaction message")
-    async def reaction_add(self, ctx, channel: discord.TextChannel, message_id, emote, role: discord.Role, description=None):
+    async def reaction_add(self, ctx, msg_reference, emote, role: discord.Role, description=None):
         print(f"Adding role {role.name} for emoji {emote}")
-        message: discord.Message = await channel.fetch_message(message_id)
-        if message.author == self.bot.user:
-            embed: discord.Embed = message.embeds[0]
-            field: EmbedProxy = embed.fields[0]
-            embed.remove_field(0)
+        guild: discord.Guild = ctx.guild
+        msg_data = self.get_msg_from_ref(guild.id, msg_reference)
+        if not msg_data: raise NoMessageExists(f"No message exists with reference `{msg_reference}`.")
+        channel = guild.get_channel(msg_data["channelID"])
 
-            if field.value == "_ _": field.value = ""
-            new_val = field.value + f"\n{emote} {description if description is not None else role.name}"
-            embed.add_field(name=field.name, value=new_val)
-            await message.edit(embed=embed)
+        message: discord.Message = await channel.fetch_message(msg_data["messageID"])
 
+        # Edit embed to include new option
+        embed: discord.Embed = message.embeds[0]
+        field: EmbedProxy = embed.fields[0]
+        embed.remove_field(0)
+
+        if field.value == "_ _": field.value = ""
+        new_val = field.value + f"\n{emote} {description if description is not None else role.name}"
+        embed.add_field(name=field.name, value=new_val)
+        await message.edit(embed=embed)
+
+        # Add reaction to list
+        self.add_reaction(ctx.guild.id, msg_reference, emote, role.id)
         await message.add_reaction(emote)
-        self.add_reaction(ctx.guild.id, emote, role.id, channel.id, message_id)
 
 
 
@@ -89,88 +107,90 @@ class ReactionRoles(commands.Cog):
         if data is None:
             embed.description = "There are no reaction roles set up right now."
         else:
-            for index, rr in enumerate(data):
-                emote = rr.get("emote")
-                role_id = rr.get("roleID")
-                role = ctx.guild.get_role(role_id)
-                channel_id = rr.get("channelID")
-                message_id = rr.get("messageID")
-                embed.add_field(
-                    name=str(index),
-                    value=f"{emote} - @{role} - [message](https://www.discordapp.com/channels/{guild_id}/{channel_id}/{message_id})",
-                    inline=False,
-                )
+            for reference, msg_data in data.items():
+                embed.add_field(**self.msg_field(ctx, reference, msg_data))
         await ctx.send(embed=embed)
 
 
     @commands.has_permissions(manage_channels=True)
     @commands.command()
-    async def reaction_remove(self, ctx, index: int):
+    async def reaction_remove(self, ctx, reference: str):
+        guild: discord.Guild = ctx.guild
         guild_id = ctx.guild.id
         data = reaction_roles_data.get(str(guild_id), None)
-        embed = discord.Embed(title=f"Remove Reaction Role {index}")
-        rr = None
-        if data is None:
-            embed.description = "Given Reaction Role was not found."
-        else:
-            embed.description = (
-                "Do you wish to remove the reaction role below? Please react with 🗑️."
-            )
-            rr = data[index]
-            emote = rr.get("emote")
-            role_id = rr.get("roleID")
-            role = ctx.guild.get_role(role_id)
-            channel_id = rr.get("channelID")
-            message_id = rr.get("messageID")
-            _id = rr.get("id")
-            embed.set_footer(text=_id)
-            embed.add_field(
-                name=str(index),
-                value=f"{emote} - @{role} - [message](https://www.discordapp.com/channels/{guild_id}/{channel_id}/{message_id})",
-                inline=False,
-            )
+        embed = discord.Embed(title=f"Remove Reaction Role {reference}")
+        if data is None or data.get(reference) is None:
+            raise NoMessageExists(f"No message exists with reference `{reference}`.")
+
+        embed.description = "React with 🗑️ to confirm removal of message " + reference
+        msg_data = data[reference]
+        embed.add_field(**self.msg_field(ctx, reference, msg_data))
+
         msg = await ctx.send(embed=embed)
-        if rr is not None:
+        if msg_data is not None:
             await msg.add_reaction("🗑️")
 
-            def check(reaction, user):
-                return (
-                    reaction.message.id == msg.id
-                    and user == ctx.message.author
-                    and str(reaction.emoji) == "🗑️"
-                )
-
-            reaction, user = await self.bot.wait_for("reaction_add", check=check)
-            data.remove(rr)
+            await self.bot.wait_for("reaction_add", check=lambda r, u: r.message.id == msg.id and u == ctx.message.author and str(r.emoji) == "🗑️", timeout=60)
+            channel: discord.TextChannel = guild.get_channel(msg_data["channelID"])
+            orig_message: discord.PartialMessage = channel.get_partial_message(msg_data["messageID"])
+            await orig_message.delete()
+            del data[reference]
             reaction_roles_data[str(guild_id)] = data
             store_reaction_roles()
 
-    def add_reaction(self, guild_id, emote, role_id, channel_id, message_id):
+
+    def add_message(self, guild_id, message: discord.Message, reference):
         if not str(guild_id) in reaction_roles_data:
-            reaction_roles_data[str(guild_id)] = []
-        reaction_roles_data[str(guild_id)].append(
-            {
-                "id": str(uuid.uuid4()),
-                "emote": emote,
-                "roleID": role_id,
-                "channelID": channel_id,
-                "messageID": int(message_id),
-            }
-        )
+            reaction_roles_data[str(guild_id)] = {}
+
+        if reaction_roles_data[str(guild_id)].get(reference):
+            return False
+        reaction_roles_data[str(guild_id)][reference] = {
+            "channelID": message.channel.id,
+            "messageID": message.id,
+            "roles": {}
+        }
         store_reaction_roles()
+        return True
+
+
+    def add_reaction(self, guild_id, reference, emote, role_id):
+        reaction_roles_data[str(guild_id)][reference]["roles"][str(emote)] = role_id
+        store_reaction_roles()
+
+
+    def get_msg_from_ids(self, guild_id, channel_id, message_id):
+        data = reaction_roles_data.get(str(guild_id), None)
+        if data is not None:
+            for ref, msg in data.items():
+                if channel_id == msg.get("channelID") and message_id == msg.get("messageID"):
+                    return ref, msg
+        return None, None
+
+    def get_msg_from_ref(self, guild_id, reference):
+        data = reaction_roles_data.get(str(guild_id), None)
+        if data is not None:
+            msg_data = data.get(reference)
+            return msg_data
+
+    def msg_field(self, ctx, reference, msg_data):
+        channel_id = msg_data.get("channelID")
+        message_id = msg_data.get("messageID")
+        field_title = str(reference)
+        field_value = f"[message](https://www.discordapp.com/channels/{ctx.guild.id}/{channel_id}/{message_id})"
+        for emote, role_id in msg_data["roles"].items():
+            field_value += f"\n{emote} {ctx.guild.get_role(role_id)}"
+        return {"name": field_title, "value": field_value, "inline": False}
 
     def parse_reaction_payload(self, payload: discord.RawReactionActionEvent):
         guild_id = payload.guild_id
-        data = reaction_roles_data.get(str(guild_id), None)
-        print(payload)
-        print(data)
-        if data is not None:
-            for rr in data:
-                if payload.message_id == rr.get("messageID") and payload.channel_id == rr.get("channelID") and str(payload.emoji) == rr.get("emote"):
-                    guild = self.bot.get_guild(guild_id)
-                    role = guild.get_role(rr.get("roleID"))
-                    user = guild.get_member(payload.user_id)
-                    return role, user
+        ref, msg_data = self.get_msg_from_ids(payload.guild_id, payload.channel_id, payload.message_id)
+        if ref is not None and msg_data is not None:
+            guild: discord.Guild = self.bot.get_guild(guild_id)
+            role = guild.get_role(msg_data["roles"].get(str(payload.emoji)))
+            user = guild.get_member(payload.user_id)
+
+            return role, user
         return None, None
 
 
