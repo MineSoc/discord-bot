@@ -71,6 +71,7 @@ class ReactionRoles(commands.Cog):
             await msg.delete()
             raise ReferenceAlreadyExists(f"A reaction message with reference `{reference}` already exists.")
 
+
     @commands.has_permissions(manage_channels=True)
     @commands.command(help="Add reaction to reaction message")
     async def reaction_add(self, ctx, msg_reference, emote, role: discord.Role, description=None):
@@ -81,6 +82,9 @@ class ReactionRoles(commands.Cog):
         channel = guild.get_channel(msg_data["channelID"])
 
         message: discord.Message = await channel.fetch_message(msg_data["messageID"])
+
+        emote = self.get_emoji(ctx, emote)
+        print(emote)
 
         # Edit embed to include new option
         embed: discord.Embed = message.embeds[0]
@@ -95,6 +99,18 @@ class ReactionRoles(commands.Cog):
         # Add reaction to list
         self.add_reaction(ctx.guild.id, msg_reference, emote, role.id)
         await message.add_reaction(emote)
+
+
+    def get_emoji(self, ctx, emote):
+        if isinstance(emote, discord.Emoji): return emote
+        if isinstance(emote, str):
+            if emote[0] == ":" and emote[-1] == ":":
+                emote = emote[1:-1]
+            guild: discord.Guild = ctx.guild
+            result = discord.utils.get(guild.emojis, name=emote)
+            if result is not None: return result
+            else: return discord.utils.get(self.bot.emojis, name=emote)
+        return None
 
 
 
