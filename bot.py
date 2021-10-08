@@ -72,12 +72,6 @@ async def msg(ctx):
     await ctx.send("_ _")
 
 
-def get_gcm(url: str):
-    # https://discord.com/channels/633724840330788865/867386809688391720/876095725816135710
-    g = re.search(r"(https?://)?(www.)?discord.com/channels/(\d+)/(\d+)/(\d+)", url)
-    return int(g.group(3)), int(g.group(4)), int(g.group(5))
-
-
 @bot.event
 async def on_error(ctx, err, *args, **kwargs):
     if err == "on_command_error":
@@ -104,4 +98,5 @@ async def on_command_error(ctx, error: Exception):
 
 if __name__ == '__main__':
     bot.load_extension("reaction_roles")
+    bot.load_extension("msg_edit")
     bot.run(TOKEN)
