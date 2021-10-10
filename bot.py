@@ -57,8 +57,7 @@ async def on_command_error(ctx, error: Exception):
 
 # Load cogs and run
 if __name__ == '__main__':
-    bot.load_extension("reaction_roles")
-    bot.load_extension("msg_edit")
-    bot.load_extension("suggestions")
-    bot.load_extension("betterhelp")
+    for filename in os.listdir('./cogs'):
+        if filename.endswith('.py'): bot.load_extension(f'cogs.{filename[:-3]}')
+
     bot.run(TOKEN)
