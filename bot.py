@@ -59,5 +59,6 @@ async def on_command_error(ctx, error: Exception):
 if __name__ == '__main__':
     bot.load_extension("reaction_roles")
     bot.load_extension("msg_edit")
+    bot.load_extension("suggestions")
     bot.load_extension("betterhelp")
     bot.run(TOKEN)
