@@ -1,10 +1,13 @@
 import os
 
 import discord
-from discord.ext.commands import when_mentioned_or, CommandNotFound, NoPrivateMessage, ExpectedClosingQuoteError
+from discord import Forbidden
+from discord.ext.commands import when_mentioned_or, CommandNotFound, NoPrivateMessage, ExpectedClosingQuoteError, \
+    MissingRequiredArgument
 from discord_components import ComponentsBot
 
 from utils.proceffects import *
+from utils.pretty_help import DefaultMenu, PrettyHelp
 
 # List of accepted prefixes
 PREFIXES = ["WMCS!"]
@@ -17,18 +20,12 @@ VERSION = "1.3.0-d.2"
 intents = discord.Intents.default()
 intents.members = True
 
-bot = ComponentsBot(command_prefix=lambda bot, msg: when_mentioned_or(*PREFIXES)(bot, msg), intents=intents, help_command=None)
-
+bot = ComponentsBot(command_prefix=lambda bot, msg: when_mentioned_or(*PREFIXES)(bot, msg), intents=intents)
+bot.help_command = PrettyHelp(no_category="Misc")
 
 @bot.event
 async def on_ready():
     print(f'{bot.user.name} has connected to Discord')
-
-
-@bot.command(help="Check bot is working")
-@remove_command()
-async def ping(ctx):
-    await ctx.send(f"🏓 Pong!\nLatency: {round(bot.latency * 1000)}ms")
 
 
 @bot.event
@@ -39,20 +36,29 @@ async def on_error(ctx, err, *args, **kwargs):
 
 
 @bot.event
-async def on_command_error(ctx, error: Exception):
+async def on_command_error(ctx: Context, error: Exception):
     await ctx.message.add_reaction("🚫")
+    message = ""
+    reraise = None
+    print(error.__class__.__name__)
     if isinstance(error, CommandNotFound):
         pass
     elif isinstance(error, NoPrivateMessage):
-        await ctx.send("Cannot run this command in DMs")
+        message = "Cannot run this command in DMs"
     elif isinstance(error, ExpectedClosingQuoteError):
-        await ctx.send(f"Mismatching quotes, {str(error)}")
+        message = f"Mismatching quotes, {str(error)}"
+    elif isinstance(error, MissingRequiredArgument):
+        message = f"Argument {str(error.param.name)} is missing\nUsage: `{ctx.prefix}{ctx.command.name} {ctx.command.signature}`"
+    elif isinstance(error, Forbidden):
+        message = "Bot does not have permissions to do this. {str(error.text)}"
     elif hasattr(error, "original"):
-        await ctx.send(f"{error}")
-        raise error.original
+        await on_command_error(ctx, error.original)
     else:
-        await ctx.send(f"{error}")
-        raise error
+        message = f"{error}"
+        reraise = error
+
+    await ctx.send(message)
+    raise reraise
 
 
 # Load cogs and run

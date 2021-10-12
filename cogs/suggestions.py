@@ -1,7 +1,8 @@
+import asyncio
+
 import discord
 from discord.ext.commands import Bot, Context, Cog, command
 
-from utils.proceffects import remove_command
 
 
 class Suggestions(Cog):
@@ -14,30 +15,54 @@ class Suggestions(Cog):
 
     @Cog.listener()
     async def on_ready(self):
-        print(f"Suggestions ready.")
+        print(f"Suggestions loaded.")
 
 
-    @command(help="Create a suggestion")
-    @remove_command(5)
+    @command()
     async def suggest(self, ctx: Context, title, *, suggestion=""):
-        title = "Suggestion | " + title
+        """
+        Creates a suggestion with a discussion thread
+
+        **Example:**
+        ```WMCS!suggest "Suggestions Bot" Add a bot to organize suggestions```
+        """
+        orig_title = title
+        title = "Suggestion | " + orig_title
 
         guild: discord.Guild = ctx.guild
         channel: discord.TextChannel = discord.utils.get(guild.channels, name="suggestions")
-        author: discord.User = ctx.author
 
-        # Create embed
+        embed = self.create_embed(ctx, title, suggestion)
+        msg = await self.post_suggestion(channel, embed, title)
+
+        channel: discord.TextChannel = discord.utils.get(guild.channels, name="exec-suggestions")
+        title = "Exec Discussion | " + orig_title
+        embed = self.create_embed(ctx, title, suggestion, msg)
+        await self.post_suggestion(channel, embed, title)
+
+        if ctx.channel.name == "suggestions":
+            await asyncio.sleep(5)
+            await ctx.message.delete()
+
+
+    @staticmethod
+    def create_embed(ctx, title, suggestion, orig_message: discord.Message = None):
         embed: discord.Embed = discord.Embed()
         embed.title = title
         embed.description = suggestion
-        embed.set_author(name=author.display_name, url=ctx.message.jump_url, icon_url=author.avatar.url)
+        if orig_message is not None:
+            embed.url = orig_message.jump_url
+        embed.set_author(name=ctx.author.display_name, url=ctx.message.jump_url, icon_url=ctx.author.avatar.url)
+        return embed
 
-        # Post message and thread
+
+    async def post_suggestion(self, channel, embed, thread_name):
         message: discord.Message = await channel.send(embed=embed)
-        await channel.create_thread(name=title, message=message)
+        await channel.create_thread(name=thread_name, message=message)
         # Add vote reactions
         await message.add_reaction("👍")
         await message.add_reaction("👎")
+        return message
 
 
 def setup(bot):

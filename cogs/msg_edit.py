@@ -14,7 +14,7 @@ from utils.proceffects import *
 
 
 class MsgEdit(ExecCog):
-    """Post and edit bot messages, embeds and buttons"""
+    """Post and edit bot messages, embeds and buttons - @Exec only"""
 
     bot: ComponentsBot
 
@@ -23,32 +23,92 @@ class MsgEdit(ExecCog):
 
     @Cog.listener()
     async def on_ready(self):
-        print(f"MsgEdit ready.")
+        print(f"MsgEdit loaded.")
 
-    @command(name="msg", help="Posts a blank message by this bot, to edit")
+    @command()
     async def msg(self, ctx):
+        """Posts a blank message by this bot, to edit"""
         await ctx.send("_ _")
 
 
-    @command(help="Edit the text of the message")
+    @command()
     @done_react
-    async def setmsg(self, ctx: Context, url: str, content: str):
-        await self.edit(ctx, url, content, None, None)
+    async def setmsg(self, ctx: Context, target_url: str, *, content):
+        """
+        Edits the text of a bot message.
 
-    @command(help="Edit the embeds of the message")
-    @done_react
-    async def setembed(self, ctx: Context, url: str, *, embed: str):
-        await self.edit(ctx, url, None, discord.Embed.from_dict(json.loads(embed)), None)
+        This bot must be the author of the message.
 
-    @command(help="Edit the buttons of the message")
+        **Example:**
+        ```WMCS!setmsg https://discord.com/channels/633724840330788865/649312564064419921/897509447205797908 New message contents```
+        """
+
+        await self.edit(ctx, target_url, content, None, None)
+
+    @command()
     @done_react
-    async def setbuttons(self, ctx: Context, url: str, button_msg_id):
-        msg: discord.Message = await ctx.fetch_message(button_msg_id)
-        raw = msg.content
+    async def setembed(self, ctx: Context, target_url: str, *, embed: str):
+        """
+        Edits the embed of a bot message.
+
+        This bot must be the author of the message. At minimum, attributes title, description and fields should be provided.
+
+        **Example:**
+        ```WMCS!setembed https://discord.com/channels/633724840330788865/649352839788888075/649355020092964893 {
+            "title": "Example",
+            "description": "Example Embed",
+            "fields": []
+        }```
+        """
+        embed = discord.Embed.from_dict(json.loads(embed))
+        await self.edit(ctx, target_url, None, embed, None)
+
+    @command()
+    @done_react
+    async def setbuttons(self, ctx: Context, target_url: str, *, buttons: str):
+        """
+        Edit the buttons of a bot message.
+
+        This bot must be the author of the message.
+
+        **Example:**
+        ```WMCS!setbuttons https://discord.com/channels/633724840330788865/649352839788888075/649355020092964893 <button data>```
+        """
+
+        # button_msg: discord.Message = await self.get_msg_from_link(ctx, buttons_url)
+
+        raw = buttons
         raw = re.sub(r"^[`a-zA-Z \n]*([\[{])", r"\g<1>", raw)
         raw = re.sub(r"([}\]])[`a-zA-Z \n]*$", r"\g<1>", raw)
         raw = re.sub("`", "\"", raw)
-        await self.edit(ctx, url, None, None, self.buttons_from_json(json.loads(raw)))
+        button_objs = self.buttons_from_json(json.loads(raw))
+
+        await self.edit(ctx, target_url, None, None, button_objs)
+
+
+    @command()
+    async def get_msg(self, ctx: Context, url: str):
+        """Get the raw contents of a message
+
+        Currently unimplemented.
+        """
+        raise NotImplementedError()
+
+
+    @command()
+    async def copy_msg(self, ctx: Context, target_channel: discord.TextChannel, src_url):
+        """
+        Posts a copy of a message to the given channel.
+
+        **Example:**
+        ```WMCS!setbuttons https://discord.com/channels/633724840330788865/649352839788888075/649355020092964893 <button data>```
+        """
+        msg = await self.get_msg_from_link(ctx, src_url)
+
+        # noinspection PyArgumentList
+        await target_channel.send(content=msg.content, embeds=msg.embeds, components=msg.components)
+
+    # TODO Copy content/embed/button
 
 
     async def edit(self, ctx: Context, url: str, content: Optional[str], embed: Optional[discord.Embed],
@@ -67,9 +127,7 @@ class MsgEdit(ExecCog):
         if components is not None: kwargs["components"] = components
 
         # Fetch then edit message
-        gid, cid, mid = self.get_gcm(url)
-        channel: Messageable = ctx.guild.get_channel(cid)
-        msg: discord.Message = await channel.fetch_message(mid)
+        msg = await self.get_msg_from_link(ctx, url)
         await msg.edit(**kwargs)
 
     def remove_placeholders(self, ctx: Context, string):
@@ -123,6 +181,13 @@ class MsgEdit(ExecCog):
         """Gets guild id, channel id and message id from link"""
         g = re.search(r"(https?://)?(www.)?discord.com/channels/(\d+)/(\d+)/(\d+)", url)
         return int(g.group(3)), int(g.group(4)), int(g.group(5))
+
+    async def get_msg_from_link(self, ctx, url):
+        """Fetches a message from a link"""
+        gid, cid, mid = self.get_gcm(url)
+        channel: Messageable = ctx.guild.get_channel(cid)
+        msg: discord.Message = await channel.fetch_message(mid)
+        return msg
 
 
 def setup(bot):

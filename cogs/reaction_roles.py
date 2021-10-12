@@ -1,42 +1,26 @@
-import atexit
-import json
-
 import discord
 from discord.ext import commands
 from discord_components import ComponentsBot
 
 from utils.exec_cog import ExecCog
+from utils.json_storage import JSONStorage
 
-REACTION_ROLES_FILE = "data/reaction_roles.json"
-
-reaction_roles_data = {}
-# Load or create storage JSON
-try:
-    with open(REACTION_ROLES_FILE) as file:
-        reaction_roles_data = json.load(file)
-except (FileNotFoundError, json.JSONDecodeError) as ex:
-    with open(REACTION_ROLES_FILE, "w") as file:
-        json.dump({}, file)
+REACTION_ROLES_FILE = "reaction_roles.json"
 
 
-# Store unsaved data on exit
-@atexit.register
-def store_reaction_roles():
-    with open(REACTION_ROLES_FILE, "w") as file:
-        json.dump(reaction_roles_data, file)
-
-
-class ReactionRoles(ExecCog):
-    """Toggle roles with reactions in #get-roles"""
+class ReactionRoles(JSONStorage, ExecCog):
+    """Toggle roles with reactions in #get-roles - @Exec only"""
 
     bot: ComponentsBot
 
     def __init__(self, bot):
+        super(ReactionRoles, self).__init__(REACTION_ROLES_FILE)
         self.bot = bot
+        print(self.data)
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print(f"ReactionRoles ready.")
+        print(f"ReactionRoles loaded.")
 
 
     @commands.Cog.listener()
@@ -57,6 +41,7 @@ class ReactionRoles(ExecCog):
             await message.remove_reaction(payload.emoji, user)
 
     def parse_reaction_payload(self, payload: discord.RawReactionActionEvent):
+        """Looks up the the corresponding role from the RR data"""
         guild_id = payload.guild_id
         ref, msg_data = self.get_msg_from_ids(payload.guild_id, payload.channel_id, payload.message_id)
         if ref is not None and msg_data is not None:
@@ -68,8 +53,14 @@ class ReactionRoles(ExecCog):
         return None, None
 
 
-    @commands.command(help="Create message to add reactions to")
-    async def reaction(self, ctx, channel: discord.TextChannel, reference, title, message):
+    @commands.command(aliases=["rcreate"])
+    async def reaction(self, ctx, channel: discord.TextChannel, reference, title, *, message=""):
+        """
+        Creates a base message to add reactions to.
+
+        **Example:**
+        ```WMCS!reaction #get-roles pronouns "Get your Pronouns!" Get your pronouns here!```
+        """
         embed = discord.Embed(title=title, description=message)
         embed.add_field(name="Roles", value="_ _", inline=False)
         msg = await channel.send(embed=embed)
@@ -80,8 +71,18 @@ class ReactionRoles(ExecCog):
             raise ReferenceAlreadyExists(f"A reaction message with reference `{reference}` already exists.")
 
 
-    @commands.command(help="Add reaction to reaction message")
-    async def reaction_add(self, ctx, msg_reference, emote, role: discord.Role, description=None):
+    @commands.command(aliases=["radd"])
+    async def reaction_add(self, ctx, msg_reference, emote, role: discord.Role, *, description=None):
+        """
+        Adds a reaction role to a message.
+
+        **Example:**
+        ```
+        WMCS!reaction_add 🧙‍♂️ @he/him **He/Him Pronouns**
+        WMCS!reaction_add 🧙‍♂️ @she/her
+        ```
+        """
+
         # Fetch data
         guild: discord.Guild = ctx.guild
         msg_data = self.get_msg_from_ref(guild.id, msg_reference)
@@ -123,10 +124,11 @@ class ReactionRoles(ExecCog):
         return None
 
 
-    @commands.command(help="List all reaction messages on this server")
+    @commands.command(aliases=["rlist"])
     async def reactions(self, ctx):
+        """List all reaction messages on this server."""
         guild_id = ctx.guild.id
-        data = reaction_roles_data.get(str(guild_id), None)
+        data = self.data.get(str(guild_id), None)
         embed = discord.Embed(title="Reaction Roles")
         if data is None:
             # Blank msg
@@ -138,12 +140,22 @@ class ReactionRoles(ExecCog):
         await ctx.send(embed=embed)
 
 
-    @commands.command(help="Remove a reaction message")
+    @commands.command(aliases=["rrem", "rdel"])
     async def reaction_remove(self, ctx, reference: str):
+        """
+        Remove a reaction message.
+
+        Unfortunately, no way is currently provided to remove a single role.
+
+        **Example:**
+        ```
+        WMCS!reaction_remove pronouns
+        ```
+        """
         # Fetch data
         guild: discord.Guild = ctx.guild
         guild_id = ctx.guild.id
-        data = reaction_roles_data.get(str(guild_id), None)
+        data = self.data.get(str(guild_id), None)
         if data is None or data.get(reference) is None:
             raise NoMessageExists(f"No message exists with reference `{reference}`.")
 
@@ -164,8 +176,7 @@ class ReactionRoles(ExecCog):
             orig_message: discord.PartialMessage = channel.get_partial_message(msg_data["messageID"])
             await orig_message.delete()
             del data[reference]
-            reaction_roles_data[str(guild_id)] = data
-            store_reaction_roles()
+            self.save_json()
 
 
     @staticmethod
@@ -180,47 +191,45 @@ class ReactionRoles(ExecCog):
         return {"name": field_title, "value": field_value, "inline": False}
 
 
-    @staticmethod
-    def add_message(guild_id, message: discord.Message, reference):
+
+    def add_message(self, guild_id, message: discord.Message, reference):
         """Adds RR record for message"""
         # Initialize guild entry if not existent already
-        if not str(guild_id) in reaction_roles_data:
-            reaction_roles_data[str(guild_id)] = {}
+        if not str(guild_id) in self.data:
+            self.data[str(guild_id)] = {}
 
         # If reference already exists
-        if reaction_roles_data[str(guild_id)].get(reference): return False
+        if self.data[str(guild_id)].get(reference): return False
         # Add data
-        reaction_roles_data[str(guild_id)][reference] = {
+        self.data[str(guild_id)][reference] = {
             "channelID": message.channel.id,
             "messageID": message.id,
             "roles": {}
         }
         # Save to file
-        store_reaction_roles()
+        self.save_json()
         return True
 
 
-    @staticmethod
-    def add_reaction(guild_id, reference, emote, role_id):
+    def add_reaction(self, guild_id, reference, emote, role_id):
         """Adds reaction record to RR reference"""
-        reaction_roles_data[str(guild_id)][reference]["roles"][str(emote)] = role_id
-        store_reaction_roles()
+        self.data[str(guild_id)][reference]["roles"][str(emote)] = role_id
+        self.save_json()
 
 
-    @staticmethod
-    def get_msg_from_ids(guild_id, channel_id, message_id):
+    def get_msg_from_ids(self, guild_id, channel_id, message_id):
         """Finds reference and message data for RR from IDs"""
-        data = reaction_roles_data.get(str(guild_id), None)
+        data = self.data.get(str(guild_id), None)
         if data is not None:
             for ref, msg in data.items():
                 if channel_id == msg.get("channelID") and message_id == msg.get("messageID"):
                     return ref, msg
         return None, None
 
-    @staticmethod
-    def get_msg_from_ref(guild_id, reference):
+
+    def get_msg_from_ref(self, guild_id, reference):
         """Finds message data for RR from ref"""
-        data = reaction_roles_data.get(str(guild_id), None)
+        data = self.data.get(str(guild_id), None)
         if data is not None:
             msg_data = data.get(reference)
             return msg_data
