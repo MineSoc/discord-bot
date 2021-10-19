@@ -14,7 +14,7 @@ PREFIXES = ["WMCS!"]
 # Fetch token from env
 TOKEN = os.getenv('WMCS_DISCORD_TOKEN')
 # TODO Check Version Number
-VERSION = "1.3.0-d.2"
+VERSION = "1.3.2"
 
 
 intents = discord.Intents.default()
@@ -40,7 +40,7 @@ async def on_command_error(ctx: Context, error: Exception):
     await ctx.message.add_reaction("🚫")
     message = ""
     reraise = None
-    print(error.__class__.__name__)
+    # Custom discord parsing error messages
     if isinstance(error, CommandNotFound):
         pass
     elif isinstance(error, NoPrivateMessage):
@@ -53,12 +53,13 @@ async def on_command_error(ctx: Context, error: Exception):
         message = "Bot does not have permissions to do this. {str(error.text)}"
     elif hasattr(error, "original"):
         await on_command_error(ctx, error.original)
+        return
     else:
         message = f"{error}"
         reraise = error
 
-    await ctx.send(message)
-    raise reraise
+    if message: await ctx.send(message)
+    if reraise: raise reraise
 
 
 # Load cogs and run
