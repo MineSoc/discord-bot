@@ -2,8 +2,8 @@ import os
 
 import discord
 from discord import Forbidden
-from discord.ext.commands import when_mentioned_or, CommandNotFound, NoPrivateMessage, ExpectedClosingQuoteError, \
-    MissingRequiredArgument
+from discord.ext.commands import when_mentioned_or
+from discord.ext.commands.errors import *
 from discord_components import ComponentsBot
 
 from utils.proceffects import *
@@ -54,6 +54,8 @@ async def on_command_error(ctx: Context, error: Exception):
     elif hasattr(error, "original"):
         await on_command_error(ctx, error.original)
         return
+    elif isinstance(error, CommandError):
+        message = str(error)
     else:
         message = f"{error}"
         reraise = error

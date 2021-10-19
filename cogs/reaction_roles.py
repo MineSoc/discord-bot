@@ -2,8 +2,10 @@ import discord
 from discord.ext import commands
 from discord_components import ComponentsBot
 
+import utils.utils
 from utils.exec_cog import ExecCog
 from utils.json_storage import JSONStorage
+import emoji
 
 REACTION_ROLES_FILE = "reaction_roles.json"
 
@@ -72,7 +74,7 @@ class ReactionRoles(JSONStorage, ExecCog):
 
 
     @commands.command(aliases=["radd"])
-    async def reaction_add(self, ctx, msg_reference, emote, role: discord.Role, *, description=None):
+    async def reaction_add(self, ctx, msg_reference, emoji, role: discord.Role, *, description=None):
         """
         Adds a reaction role to a message.
 
@@ -87,32 +89,34 @@ class ReactionRoles(JSONStorage, ExecCog):
         guild: discord.Guild = ctx.guild
         msg_data = self.get_msg_from_ref(guild.id, msg_reference)
         if not msg_data: raise NoMessageExists(f"No message exists with reference `{msg_reference}`.")
-        channel = guild.get_channel(msg_data["channelID"])
-        message: discord.Message = await channel.fetch_message(msg_data["messageID"])
 
-        emote = self.get_emoji(ctx, emote)
+        react = self.get_emoji(ctx, emoji)
+        if not react: raise commands.errors.BadArgument(f"{emoji} is an invalid emoji.")
 
         # Edit embed to include new option
+        channel = guild.get_channel(msg_data["channelID"])
+        message: discord.Message = await channel.fetch_message(msg_data["messageID"])
         embed: discord.Embed = message.embeds[0]
         field = embed.fields[0]
         embed.remove_field(0)
 
         if field.value == "_ _": field.value = ""
-        new_val = field.value + f"\n{emote} {description if description is not None else role.name}"
+        new_val = field.value + f"\n{react} {description if description is not None else role.name}"
         embed.add_field(name=field.name, value=new_val)
         await message.edit(embed=embed)
 
         # Add reaction to list
-        self.add_reaction(ctx.guild.id, msg_reference, emote, role.id)
+        self.add_reaction(ctx.guild.id, msg_reference, react, role.id)
 
         # Add reaction to message
-        await message.add_reaction(emote)
+        await message.add_reaction(react)
 
 
     def get_emoji(self, ctx, emote):
         """Gets emoji by name if name provided - checks external emojis as well"""
         if isinstance(emote, discord.Emoji): return emote
         if isinstance(emote, str):
+            if emoji.is_emoji(emote): return emote
             # Remove :'s
             if emote[0] == ":" and emote[-1] == ":":
                 emote = emote[1:-1]
@@ -159,24 +163,23 @@ class ReactionRoles(JSONStorage, ExecCog):
         if data is None or data.get(reference) is None:
             raise NoMessageExists(f"No message exists with reference `{reference}`.")
 
-        # Confirm removal message
-        embed = discord.Embed(title=f"Remove Reaction Role {reference}")
-        embed.description = "React with 🗑️ to confirm removal of message " + reference
         msg_data = data[reference]
-        embed.add_field(**self.msg_field(ctx, reference, msg_data))
-        msg = await ctx.send(embed=embed)
 
-        if msg_data is not None:
-            await msg.add_reaction("🗑️")
-
-            # Wait for reaction
-            await self.bot.wait_for("reaction_add", check=lambda r, u: r.message.id == msg.id and u == ctx.message.author and str(r.emoji) == "🗑️", timeout=60)
+        # Confirm removal message
+        async def confirm(msg, r):
             channel: discord.TextChannel = guild.get_channel(msg_data["channelID"])
             # Delete original message, from both channel and data
             orig_message: discord.PartialMessage = channel.get_partial_message(msg_data["messageID"])
             await orig_message.delete()
             del data[reference]
             self.save_json()
+
+        def reject(msg): pass
+
+        await utils.utils.confirmation(ctx, f"Remove Reaction Role {reference}",
+                                       "React with 🗑️ to confirm removal of message " + reference,
+                                       ["🗑️"], confirm, reject,
+                                       fields=[self.msg_field(ctx, reference, msg_data)])
 
 
     @staticmethod

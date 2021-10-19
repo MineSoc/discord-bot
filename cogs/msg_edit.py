@@ -1,16 +1,16 @@
 import json
 import re
-from typing import Union, Optional
+from typing import Optional
 
 import discord
 import discord_components
-from discord.abc import Messageable
 from discord.ext.commands import Cog, command
-from discord_components import Button, ActionRow
 from discord_components import ComponentsBot
 
 from utils.exec_cog import ExecCog
 from utils.proceffects import *
+
+from utils.utils import *
 
 
 class MsgEdit(ExecCog):
@@ -103,7 +103,7 @@ class MsgEdit(ExecCog):
         **Example:**
         ```WMCS!setbuttons https://discord.com/channels/633724840330788865/649352839788888075/649355020092964893 <button data>```
         """
-        msg = await self.get_msg_from_link(ctx, src_url)
+        msg = await get_msg_from_link(ctx, src_url)
 
         # noinspection PyArgumentList
         await target_channel.send(content=msg.content, embeds=msg.embeds, components=msg.components)
@@ -112,7 +112,7 @@ class MsgEdit(ExecCog):
 
 
     async def edit(self, ctx: Context, url: str, content: Optional[str], embed: Optional[discord.Embed],
-                   components: Optional[list[Union[Button, ActionRow]]]):
+                   components):
         """Base edit message"""
         kwargs = {}
         if content is not None:  # Remove placeholders from message
@@ -127,13 +127,13 @@ class MsgEdit(ExecCog):
         if components is not None: kwargs["components"] = components
 
         # Fetch then edit message
-        msg = await self.get_msg_from_link(ctx, url)
+        msg = await get_msg_from_link(ctx, url)
         await msg.edit(**kwargs)
 
-    def remove_placeholders(self, ctx: Context, string):
+    @staticmethod
+    def remove_placeholders(ctx: Context, string):
         """Replaces channel, user, role and emote placeholders"""
         guild: discord.Guild = ctx.guild
-        print(string)
 
         # def channel(match: re.Match):
         #     print(match)
@@ -162,11 +162,11 @@ class MsgEdit(ExecCog):
         def emotes(match: re.Match):
             if match.group(1):
                 e: discord.Emoji = discord.utils.get(guild.emojis, name=match.group(1))
-                if e is None: e = discord.utils.get(self.bot.emojis, name=match.group(1))
+                if e is None: e = discord.utils.get(ctx.bot.emojis, name=match.group(1))
                 if e is not None: return str(e)
-                else: return match.string
+                else: return match.group(0)
 
-        string = re.sub(":([_a-zA-Z]+):", emotes, string)
+        string = re.sub(":([-_a-zA-Z0-9]+):", emotes, string)
 
         return string
 
@@ -176,18 +176,6 @@ class MsgEdit(ExecCog):
         if isinstance(j, list): return [MsgEdit.buttons_from_json(i) for i in j]
         else: return discord_components._get_component_type(j["type"]).from_json(j)
 
-    @staticmethod
-    def get_gcm(url: str):
-        """Gets guild id, channel id and message id from link"""
-        g = re.search(r"(https?://)?(www.)?discord.com/channels/(\d+)/(\d+)/(\d+)", url)
-        return int(g.group(3)), int(g.group(4)), int(g.group(5))
-
-    async def get_msg_from_link(self, ctx, url):
-        """Fetches a message from a link"""
-        gid, cid, mid = self.get_gcm(url)
-        channel: Messageable = ctx.guild.get_channel(cid)
-        msg: discord.Message = await channel.fetch_message(mid)
-        return msg
 
 
 def setup(bot):

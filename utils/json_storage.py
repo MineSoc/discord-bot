@@ -10,6 +10,8 @@ class JSONStorage:
         self.data = {}
         self.path = os.path.join("data", path)
         self.load_json()
+        atexit.register(lambda: self.save_json())
+
 
     def load_json(self):
         """Loads JSON from path"""
@@ -20,7 +22,7 @@ class JSONStorage:
             with open(self.path, "w") as file:
                 json.dump({}, file)
 
-    @atexit.register
+
     def save_json(self):
         """Save JSON to path"""
         with open(self.path, "w") as file:
