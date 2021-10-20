@@ -4,3 +4,9 @@ Currently, this bot only exists to post a single message with added buttons (Dis
 ## Usage
 Set the environment variable `WMCS_DISCORD_TOKEN` to the token of the bot and install requirements.  
 Run `bot.py` and run the command `WMCS!mcguide` where you want the guide message.
+
+## Features
+- Can add and edit buttons and embeds to bot posts (and content)
+- Reaction Roles
+- Minecraft style title generator
+- Suggestions system
