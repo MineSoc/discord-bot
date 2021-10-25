@@ -1,4 +1,6 @@
 import os
+import logging
+import sys
 
 import discord
 from discord import Forbidden
@@ -6,6 +8,7 @@ from discord.ext.commands import when_mentioned_or
 from discord.ext.commands.errors import *
 from discord_components import ComponentsBot
 
+import utils.utils
 from utils.proceffects import *
 from utils.pretty_help import DefaultMenu, PrettyHelp
 
@@ -14,8 +17,16 @@ PREFIXES = ["WMCS!"]
 # Fetch token from env
 TOKEN = os.getenv('WMCS_DISCORD_TOKEN')
 # TODO Check Version Number
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(funcName)s:%(lineno)d [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("discord.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 intents = discord.Intents.default()
 intents.members = True
@@ -25,7 +36,7 @@ bot.help_command = PrettyHelp(no_category="Misc")
 
 @bot.event
 async def on_ready():
-    print(f'{bot.user.name} has connected to Discord')
+    logging.info(f'{bot.user.name} has connected to Discord')
 
 
 @bot.event
@@ -35,9 +46,13 @@ async def on_error(ctx, err, *args, **kwargs):
     raise
 
 
+async def error_delete(msg: discord.Message, r):
+    await msg.delete()
+
+
 @bot.event
 async def on_command_error(ctx: Context, error: Exception):
-    await ctx.message.add_reaction("🚫")
+    # await ctx.message.add_reaction("🚫")
     message = ""
     reraise = None
     # Custom discord parsing error messages
@@ -50,7 +65,8 @@ async def on_command_error(ctx: Context, error: Exception):
     elif isinstance(error, MissingRequiredArgument):
         message = f"Argument {str(error.param.name)} is missing\nUsage: `{ctx.prefix}{ctx.command.name} {ctx.command.signature}`"
     elif isinstance(error, Forbidden):
-        message = "Bot does not have permissions to do this. {str(error.text)}"
+        message = f"Bot does not have permissions to do this. {str(error.text)}"
+        reraise = error
     elif hasattr(error, "original"):
         await on_command_error(ctx, error.original)
         return
@@ -59,8 +75,10 @@ async def on_command_error(ctx: Context, error: Exception):
     else:
         message = f"{error}"
         reraise = error
+    if reraise: logging.error(reraise, exc_info=True)
 
-    if message: await ctx.send(message)
+    # if message: await ctx.send(message)
+    if message: await utils.utils.confirmation(ctx, "", "", ["🚫"], error_delete, utils.utils.nothing, content=message)
     if reraise: raise reraise
 
 

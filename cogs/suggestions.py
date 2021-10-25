@@ -1,8 +1,11 @@
 import asyncio
+import logging
 
 import discord
-from discord.ext.commands import Bot, Context, Cog, command
+from discord.ext import commands
+from discord.ext.commands import Bot, Context, Cog, command, bot_has_permissions, guild_only
 
+from utils import utils
 
 
 class Suggestions(Cog):
@@ -15,10 +18,13 @@ class Suggestions(Cog):
 
     @Cog.listener()
     async def on_ready(self):
-        print(f"Suggestions loaded.")
+        logging.info(f"Suggestions loaded.")
 
-
+    # Checks bot has these perms in #suggestions and #exec-suggestions
+    channel_converter = utils.BotHasPermsInChannel(view_channel=True, send_messages=True, embed_links=True, add_reactions=True, create_public_threads=True)
     @command()
+    @bot_has_permissions(send_messages=True, add_reactions=True, embed_links=True, create_public_threads=True)
+    @guild_only()
     async def suggest(self, ctx: Context, title, *, suggestion=""):
         """
         Creates a suggestion with a discussion thread
@@ -30,19 +36,22 @@ class Suggestions(Cog):
         title = "Suggestion | " + orig_title
 
         guild: discord.Guild = ctx.guild
-        channel: discord.TextChannel = discord.utils.get(guild.channels, name="suggestions")
+        # noinspection PyTypeChecker
+        channel: discord.TextChannel = await self.channel_converter.convert(ctx, "suggestions")
 
         embed = self.create_embed(ctx, title, suggestion)
         msg = await self.post_suggestion(channel, embed, title)
 
-        channel: discord.TextChannel = discord.utils.get(guild.channels, name="exec-suggestions")
+        try:
+            # noinspection PyTypeChecker
+            channel: discord.TextChannel = await self.channel_converter.convert(ctx, "exec-suggestions")
+        except utils.BotMissingPermissionsChannel as e:
+            logging.info(f"{ctx.guild.name}: {e}")
+            return
+        if not channel: return
         title = "Exec Discussion | " + orig_title
         embed = self.create_embed(ctx, title, suggestion, msg)
         await self.post_suggestion(channel, embed, title)
-
-        if ctx.channel.name == "suggestions":
-            await asyncio.sleep(5)
-            await ctx.message.delete()
 
 
     @staticmethod

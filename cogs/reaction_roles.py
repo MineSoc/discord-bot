@@ -1,3 +1,5 @@
+import logging
+
 import discord
 from discord.ext import commands
 from discord_components import ComponentsBot
@@ -18,11 +20,10 @@ class ReactionRoles(JSONStorage, ExecCog):
     def __init__(self, bot):
         super(ReactionRoles, self).__init__(REACTION_ROLES_FILE)
         self.bot = bot
-        print(self.data)
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print(f"ReactionRoles loaded.")
+        logging.info(f"ReactionRoles loaded.")
 
 
     @commands.Cog.listener()
@@ -54,9 +55,10 @@ class ReactionRoles(JSONStorage, ExecCog):
             return role, user
         return None, None
 
-
+    # noinspection PyTypeHints
     @commands.command(aliases=["rcreate"])
-    async def reaction(self, ctx, channel: discord.TextChannel, reference, title, *, message=""):
+    async def reaction(self, ctx, channel: utils.BotHasPermsInChannel(send_messages=True, embed_links=True, add_reactions=True),
+                       reference, title, *, message=""):
         """
         Creates a base message to add reactions to.
 
@@ -174,11 +176,9 @@ class ReactionRoles(JSONStorage, ExecCog):
             del data[reference]
             self.save_json()
 
-        def reject(msg): pass
-
         await utils.utils.confirmation(ctx, f"Remove Reaction Role {reference}",
                                        "React with 🗑️ to confirm removal of message " + reference,
-                                       ["🗑️"], confirm, reject,
+                                       ["🗑️"], confirm, utils.nothing,
                                        fields=[self.msg_field(ctx, reference, msg_data)])
 
 

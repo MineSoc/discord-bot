@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from typing import Optional
 
@@ -23,7 +24,7 @@ class MsgEdit(ExecCog):
 
     @Cog.listener()
     async def on_ready(self):
-        print(f"MsgEdit loaded.")
+        logging.info(f"MsgEdit loaded.")
 
     @command()
     async def msg(self, ctx):
@@ -33,7 +34,7 @@ class MsgEdit(ExecCog):
 
     @command()
     @done_react
-    async def setmsg(self, ctx: Context, target_url: str, *, content):
+    async def setmsg(self, ctx: Context, target_url: discord.Message, *, content):
         """
         Edits the text of a bot message.
 
@@ -47,7 +48,7 @@ class MsgEdit(ExecCog):
 
     @command()
     @done_react
-    async def setembed(self, ctx: Context, target_url: str, *, embed: str):
+    async def setembed(self, ctx: Context, target_url: discord.Message, *, embed: str):
         """
         Edits the embed of a bot message.
 
@@ -65,7 +66,7 @@ class MsgEdit(ExecCog):
 
     @command()
     @done_react
-    async def setbuttons(self, ctx: Context, target_url: str, *, buttons: str):
+    async def setbuttons(self, ctx: Context, target_url: discord.Message, *, buttons: str):
         """
         Edit the buttons of a bot message.
 
@@ -74,8 +75,6 @@ class MsgEdit(ExecCog):
         **Example:**
         ```WMCS!setbuttons https://discord.com/channels/633724840330788865/649352839788888075/649355020092964893 <button data>```
         """
-
-        # button_msg: discord.Message = await self.get_msg_from_link(ctx, buttons_url)
 
         raw = buttons
         raw = re.sub(r"^[`a-zA-Z \n]*([\[{])", r"\g<1>", raw)
@@ -96,23 +95,21 @@ class MsgEdit(ExecCog):
 
 
     @command()
-    async def copy_msg(self, ctx: Context, target_channel: discord.TextChannel, src_url):
+    async def copy_msg(self, ctx: Context, target_channel: discord.TextChannel, src_msg: discord.Message):
         """
         Posts a copy of a message to the given channel.
 
         **Example:**
         ```WMCS!setbuttons https://discord.com/channels/633724840330788865/649352839788888075/649355020092964893 <button data>```
         """
-        msg = await get_msg_from_link(ctx, src_url)
 
         # noinspection PyArgumentList
-        await target_channel.send(content=msg.content, embeds=msg.embeds, components=msg.components)
+        await target_channel.send(content=src_msg.content, embeds=src_msg.embeds, components=src_msg.components)
 
     # TODO Copy content/embed/button
 
 
-    async def edit(self, ctx: Context, url: str, content: Optional[str], embed: Optional[discord.Embed],
-                   components):
+    async def edit(self, ctx: Context, msg: discord.Message, content: Optional[str], embed: Optional[discord.Embed], components):
         """Base edit message"""
         kwargs = {}
         if content is not None:  # Remove placeholders from message
@@ -126,8 +123,6 @@ class MsgEdit(ExecCog):
             kwargs["embed"] = embed
         if components is not None: kwargs["components"] = components
 
-        # Fetch then edit message
-        msg = await get_msg_from_link(ctx, url)
         await msg.edit(**kwargs)
 
     @staticmethod

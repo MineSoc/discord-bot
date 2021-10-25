@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 
 import discord
@@ -11,6 +12,8 @@ import utils.utils
 from cogs.msg_edit import MsgEdit
 
 class Misc(Cog):
+    bot: commands.Bot
+
     def __init__(self, bot):
         self.bot = bot
         self.font: ImageFont.ImageFont = ImageFont.truetype("resources/MinecraftTen.ttf", 90)
@@ -20,7 +23,7 @@ class Misc(Cog):
 
     @Cog.listener()
     async def on_ready(self):
-        print(f"Misc loaded.")
+        logging.info(f"Misc loaded.")
 
     @command()
     async def ping(self, ctx):
@@ -39,6 +42,7 @@ class Misc(Cog):
 
     @command()
     @commands.has_role("Exec")
+    @commands.bot_has_permissions(send_messages=True, attach_files=True)
     async def title(self, ctx, *, title: str):
         """
         Generates a title image, in a Minecraft style font. Use [A] to produce the creeper face version.
@@ -48,8 +52,11 @@ class Misc(Cog):
         """
         await ctx.send(file=self.create_title(title))
 
+    # noinspection PyTypeHints
     @command()
-    async def announce(self, ctx, channel: discord.TextChannel, *, announcement: str):
+    @commands.has_role("Exec")
+    @commands.bot_has_permissions(send_messages=True, add_reactions=True, embed_links=True, attach_files=True)
+    async def announce(self, ctx: commands.Context, channel: utils.BotHasPermsInChannel(send_messages=True, attach_files=True), *, announcement: str):
         """
         Posts an announcement. Generates headings as images.
         `# <Title>` creates a title - use [A] for creeper face A.
@@ -74,12 +81,13 @@ class Misc(Cog):
         IMG https://picsum.photos/seed/a/400/200
         ```
         """
+
         lines = announcement.split("\n")
         accumulated_lines = []
         messages = []
 
+        # Wrappers for adding message to messages after sending
         async def send(**kwargs):
-            # print("POSTING", kwargs)
             messages.append(await ctx.send(**kwargs))
 
         async def send_lines():
@@ -87,7 +95,9 @@ class Misc(Cog):
             await send(content=MsgEdit.remove_placeholders(ctx, concat))
             accumulated_lines.clear()
 
+        # Send each line
         for line in lines:
+            # Find each type
             sub_group = re.search(r"^## ?(.+)$", line)
             title_group = re.search(r"^# ?(.+)$", line)
             img_group = re.search(r"^IMG (.+)$", line)
@@ -105,15 +115,21 @@ class Misc(Cog):
                 elif break_group: pass
 
             else:  # Is just text
-                # print("BEFORE", accumulated_lines)
                 if (len(accumulated_lines)+len(line)) > 1900: await send_lines()
                 accumulated_lines.append(line)
-                # print("AFTER", accumulated_lines)
 
         # Post remaining message
         if accumulated_lines: await send_lines()
 
+        # Function for reaction to confirm message
         async def confirm(msg, reaction):
+            # If edit or delete, remove old messages
+            if str(reaction) == "✏️":
+                await ctx.send(f"```{ctx.message.content}```")
+            if str(reaction) in {"❌", "✏️"}:
+                await self.remove_msgs(*messages, msg, ctx.message)
+                return
+
             # Copy all messages
             for ann_msg in messages:
                 if ann_msg.attachments: await channel.send(ann_msg.attachments[0].url)
@@ -124,16 +140,22 @@ class Misc(Cog):
             if str(reaction) == "🏓" and role: await channel.send(f"<@&{role.id}>")
 
             await msg.clear_reactions()
-            await msg.add_reaction("👍")
+            await ctx.message.add_reaction("👍")
+            # Once posted, remove old messages
+            await self.remove_msgs(*messages, msg)
 
         async def timeout(msg):
-            await msg.clear_reactions()
-            await msg.add_reaction("❌")
+            await ctx.send(f"Timeout. Original command:\n```{ctx.message.content}```")
+            await self.remove_msgs(*messages, msg, ctx.message)
 
         await utils.utils.confirmation(ctx, f"Confirm posting to #{channel.name}",
-                                            "🏓 will post and ping @ping party\n  ✅ will just post",
-                                            {"🏓", "✅"}, confirm, timeout, 300)
+                                            "🏓 will post and ping @ping party\n  ✅ will just post\n  ✏️ to edit\n  ❌ to cancel",
+                                            ["🏓", "✅", "✏️", "❌"], confirm, timeout, 300)
 
+    @staticmethod
+    async def remove_msgs(*messages):
+        for ann_msg in messages:
+            await ann_msg.delete()
 
     def create_title(self, title):
         title = title.replace("[A]", "ƒ")
