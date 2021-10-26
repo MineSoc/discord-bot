@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 import discord
+from discord import Thread
 from discord.ext import commands
 from discord.ext.commands import Bot, Context, Cog, command, bot_has_permissions, guild_only
 
@@ -22,6 +23,7 @@ class Suggestions(Cog):
 
     # Checks bot has these perms in #suggestions and #exec-suggestions
     channel_converter = utils.BotHasPermsInChannel(view_channel=True, send_messages=True, embed_links=True, add_reactions=True, create_public_threads=True)
+
     @command()
     @bot_has_permissions(send_messages=True, add_reactions=True, embed_links=True, create_public_threads=True)
     @guild_only()
@@ -65,7 +67,8 @@ class Suggestions(Cog):
         return embed
 
 
-    async def post_suggestion(self, channel, embed, thread_name):
+    @staticmethod
+    async def post_suggestion(channel, embed, thread_name):
         message: discord.Message = await channel.send(embed=embed)
         await channel.create_thread(name=thread_name, message=message)
         # Add vote reactions
@@ -73,6 +76,41 @@ class Suggestions(Cog):
         await message.add_reaction("👎")
         return message
 
+
+
+    @command()
+    @commands.has_role("Exec")
+    async def approve(self, ctx: Context, msg: discord.Message, *, reason: str = ""):
+        """
+        Approves a suggestion.
+
+        **Example:**
+        ```WMCS!approve <msg link> Has been needed for a while```
+        """
+        await self.suggestion_action(ctx, msg, "✅", "Suggestion Approved", reason)
+
+
+    @command()
+    @commands.has_role("Exec")
+    async def deny(self, ctx: Context, msg: discord.Message, *, reason: str = ""):
+        """
+        Denies a suggestion.
+
+        **Example:**
+        ```WMCS!deny <msg link> Very bad idea```
+        """
+        await self.suggestion_action(ctx, msg, "❌", "Suggestion Denied", reason)
+
+
+    async def suggestion_action(self, ctx, msg, emoji, action, reason):
+        if reason: text = f"{emoji} **{action}**\n{reason}"
+        else: text = f"{emoji} **{action}**"
+
+        await msg.clear_reactions()
+        await msg.add_reaction(emoji)
+        thread: Thread = next(t for t in msg.channel.threads if t.id == msg.id)
+        if thread is None: return
+        await thread.send(text)
 
 def setup(bot):
     bot.add_cog(Suggestions(bot))
