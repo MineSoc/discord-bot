@@ -28,6 +28,17 @@ class BotHasPermsInChannel(commands.TextChannelConverter):
         raise BotMissingPermissionsChannel(channel, missing)
 
 
+# Check bot perms in channel argument
+class ExternalEmoji(commands.EmojiConverter):
+    async def convert(self, ctx: Context, argument: str) -> discord.Emoji:
+        try:
+            emoji = await super().convert(ctx, argument)
+        except commands.BadArgument:
+            emoji = discord.utils.get(ctx.bot.emojis, name=argument.strip(": "))
+
+        if emoji: return emoji
+        raise commands.errors.BadArgument(f"{argument} is an invalid emoji.")
+
 
 class BotMissingPermissionsChannel(commands.BotMissingPermissions):
     def __init__(self, channel: discord.TextChannel, missing_permissions, *args):

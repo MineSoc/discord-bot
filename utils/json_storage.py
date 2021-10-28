@@ -26,4 +26,12 @@ class JSONStorage:
     def save_json(self):
         """Save JSON to path"""
         with open(self.path, "w") as file:
-            json.dump(self.data, file)
+            json.dump(self.data, file,indent=4)
+
+
+    def guild_data(self, guild_id):
+        """Fetches the data for a guild"""
+        if not str(guild_id) in self.data:
+            self.data[str(guild_id)] = {}
+        return self.data[str(guild_id)]
+

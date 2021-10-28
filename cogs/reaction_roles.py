@@ -76,7 +76,7 @@ class ReactionRoles(JSONStorage, ExecCog):
 
 
     @commands.command(aliases=["radd"])
-    async def reaction_add(self, ctx, msg_reference, emoji, role: discord.Role, *, description=None):
+    async def reaction_add(self, ctx, msg_reference, emoji: utils.ExternalEmoji, role: discord.Role, *, description=None):
         """
         Adds a reaction role to a message.
 
@@ -92,9 +92,6 @@ class ReactionRoles(JSONStorage, ExecCog):
         msg_data = self.get_msg_from_ref(guild.id, msg_reference)
         if not msg_data: raise NoMessageExists(f"No message exists with reference `{msg_reference}`.")
 
-        react = self.get_emoji(ctx, emoji)
-        if not react: raise commands.errors.BadArgument(f"{emoji} is an invalid emoji.")
-
         # Edit embed to include new option
         channel = guild.get_channel(msg_data["channelID"])
         message: discord.Message = await channel.fetch_message(msg_data["messageID"])
@@ -103,41 +100,41 @@ class ReactionRoles(JSONStorage, ExecCog):
         embed.remove_field(0)
 
         if field.value == "_ _": field.value = ""
-        new_val = field.value + f"\n{react} {description if description is not None else role.name}"
+        new_val = field.value + f"\n{emoji} {description if description is not None else role.name}"
         embed.add_field(name=field.name, value=new_val)
         await message.edit(embed=embed)
 
         # Add reaction to list
-        self.add_reaction(ctx.guild.id, msg_reference, react, role.id)
+        self.add_reaction(ctx.guild.id, msg_reference, emoji, role.id)
 
         # Add reaction to message
-        await message.add_reaction(react)
+        # noinspection PyTypeChecker
+        await message.add_reaction(emoji)
 
 
-    def get_emoji(self, ctx, emote):
-        """Gets emoji by name if name provided - checks external emojis as well"""
-        if isinstance(emote, discord.Emoji): return emote
-        if isinstance(emote, str):
-            if emoji.is_emoji(emote): return emote
-            # Remove :'s
-            if emote[0] == ":" and emote[-1] == ":":
-                emote = emote[1:-1]
-            # Check server emojis first
-            result = discord.utils.get(ctx.guild.emojis, name=emote)
-            if result is not None: return result
-            # If no match, check other servers
-            else: return discord.utils.get(self.bot.emojis, name=emote)
-        return None
+    # def get_emoji(self, ctx, emote):
+    #     """Gets emoji by name if name provided - checks external emojis as well"""
+    #     if isinstance(emote, discord.Emoji): return emote
+    #     if isinstance(emote, str):
+    #         if emoji.is_emoji(emote): return emote
+    #         # Remove :'s
+    #         if emote[0] == ":" and emote[-1] == ":":
+    #             emote = emote[1:-1]
+    #         # Check server emojis first
+    #         result = discord.utils.get(ctx.guild.emojis, name=emote)
+    #         if result is not None: return result
+    #         # If no match, check other servers
+    #         else: return discord.utils.get(self.bot.emojis, name=emote)
+    #     return None
 
 
     @commands.command(aliases=["rlist"])
     async def reactions(self, ctx):
         """List all reaction messages on this server."""
         guild_id = ctx.guild.id
-        data = self.data.get(str(guild_id), None)
+        data = self.guild_data(guild_id)
         embed = discord.Embed(title="Reaction Roles")
-        if data is None:
-            # Blank msg
+        if not data:
             embed.description = "There are no reaction roles set up right now."
         else:
             # Lists all RRs
@@ -161,8 +158,8 @@ class ReactionRoles(JSONStorage, ExecCog):
         # Fetch data
         guild: discord.Guild = ctx.guild
         guild_id = ctx.guild.id
-        data = self.data.get(str(guild_id), None)
-        if data is None or data.get(reference) is None:
+        data = self.guild_data(guild_id)
+        if not data or data.get(reference) is None:
             raise NoMessageExists(f"No message exists with reference `{reference}`.")
 
         msg_data = data[reference]
@@ -197,14 +194,13 @@ class ReactionRoles(JSONStorage, ExecCog):
 
     def add_message(self, guild_id, message: discord.Message, reference):
         """Adds RR record for message"""
-        # Initialize guild entry if not existent already
-        if not str(guild_id) in self.data:
-            self.data[str(guild_id)] = {}
+
+        data = self.guild_data(guild_id)
 
         # If reference already exists
-        if self.data[str(guild_id)].get(reference): return False
+        if data.get(reference): return False
         # Add data
-        self.data[str(guild_id)][reference] = {
+        data[reference] = {
             "channelID": message.channel.id,
             "messageID": message.id,
             "roles": {}
@@ -216,14 +212,14 @@ class ReactionRoles(JSONStorage, ExecCog):
 
     def add_reaction(self, guild_id, reference, emote, role_id):
         """Adds reaction record to RR reference"""
-        self.data[str(guild_id)][reference]["roles"][str(emote)] = role_id
+        self.guild_data(guild_id)[reference]["roles"][str(emote)] = role_id
         self.save_json()
 
 
     def get_msg_from_ids(self, guild_id, channel_id, message_id):
         """Finds reference and message data for RR from IDs"""
-        data = self.data.get(str(guild_id), None)
-        if data is not None:
+        data = self.guild_data(guild_id)
+        if data:
             for ref, msg in data.items():
                 if channel_id == msg.get("channelID") and message_id == msg.get("messageID"):
                     return ref, msg
@@ -232,8 +228,8 @@ class ReactionRoles(JSONStorage, ExecCog):
 
     def get_msg_from_ref(self, guild_id, reference):
         """Finds message data for RR from ref"""
-        data = self.data.get(str(guild_id), None)
-        if data is not None:
+        data = self.guild_data(guild_id)
+        if data:
             msg_data = data.get(reference)
             return msg_data
 
@@ -246,6 +242,8 @@ class ReferenceAlreadyExists(Exception):
 class NoMessageExists(Exception):
     def __init__(self, str):
         super().__init__(str)
+
+
 
 
 def setup(bot):
