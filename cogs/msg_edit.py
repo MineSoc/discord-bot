@@ -155,13 +155,13 @@ class MsgEdit(ExecCog):
         # string = re.sub("@([^@#\w]+)", roles, string)
 
         def emotes(match: re.Match):
-            if match.group(1):
-                e: discord.Emoji = discord.utils.get(guild.emojis, name=match.group(1))
-                if e is None: e = discord.utils.get(ctx.bot.emojis, name=match.group(1))
-                if e is not None: return str(e)
-                else: return match.group(0)
+            if match.group(2):
+                e: discord.Emoji = discord.utils.get(guild.emojis, name=match.group(2))
+                if e is None: e = discord.utils.get(ctx.bot.emojis, name=match.group(2))
+                if e is not None: return match.group(1) + str(e)
+            return match.group(0)
 
-        string = re.sub(":([-_a-zA-Z0-9]+):", emotes, string)
+        string = re.sub("([^<]|^):([-_a-zA-Z0-9]+):", emotes, string)
 
         return string
 
