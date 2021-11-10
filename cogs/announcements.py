@@ -1,10 +1,10 @@
 import io
 import re
+from typing import Union, Optional
 
 import discord
 
 from discord.ext import commands
-from discord.ext.commands import command
 from PIL import Image, ImageFont, ImageDraw
 
 import utils
@@ -24,7 +24,7 @@ class Announcements(utils.ExecCog):
         self.outline_colour = (0, 0, 0)
 
 
-    @command()
+    @commands.command()
     @commands.bot_has_permissions(send_messages=True, attach_files=True)
     async def title(self, ctx, *, title: str):
         """
@@ -49,10 +49,11 @@ class Announcements(utils.ExecCog):
 
 
     # noinspection PyTypeHints
-    @command()
+    @commands.command(usage="WMCS!announce <channel> <announcement | source msg link>")
     @commands.bot_has_permissions(send_messages=True, add_reactions=True, embed_links=True, attach_files=True)
     async def announce(self, ctx: commands.Context,
-                       channel: utils.BotHasPermsInChannel(send_messages=True, attach_files=True), *, announcement: str):
+                       channel: utils.BotHasPermsInChannel(send_messages=True, attach_files=True),
+                       *, announcement: Union[discord.Message, str]):
         """
         Posts an announcement. Generates headings as images.
         `# <Title>` creates a title - use [A] for creeper face A.
@@ -64,6 +65,7 @@ class Announcements(utils.ExecCog):
 
         Once posted, you may edit the announcement with WMCS!setmsg <url> <content>
 
+        ✏️ Edit will update the announcement to match any *edits to the original command message.*
         **Example**
         ```
         WMCS!announce #events
@@ -77,6 +79,26 @@ class Announcements(utils.ExecCog):
         IMG https://picsum.photos/seed/a/400/200
         ```
         """
+
+        # If message is provided,
+        if isinstance(announcement, discord.Message):
+            an_msg = announcement
+            announcement: str = announcement.content
+
+            # Remove WMCS!announce #<channel> from start of announcement
+            prefixes = await ctx.bot.get_prefix(an_msg)
+            def check_pref():
+                for pref in prefixes:
+                    cmd = pref + "announce "
+                    if announcement.startswith(cmd):
+                        return pref, announcement[len(cmd):]
+
+            if p := check_pref():
+                pref, cmd = p
+                # Remove channel and following whitespace
+                search = re.search("^((<#[0-9]{15,20}>)|(#?\\S+))(\s|\\n)* (.+)$", cmd, re.DOTALL)
+                if search: announcement = search.group(5)
+
         lines = announcement.split("\n")
         accumulated_lines = []
         messages = []
@@ -87,7 +109,8 @@ class Announcements(utils.ExecCog):
 
         async def send_lines():
             concat = "\n".join(accumulated_lines)
-            await send(content=MsgEdit.remove_placeholders(ctx, concat))
+            try: await send(content=MsgEdit.remove_placeholders(ctx, concat))
+            except discord.HTTPException: pass
             accumulated_lines.clear()
 
         # Send each line
@@ -120,10 +143,12 @@ class Announcements(utils.ExecCog):
         # Function for reaction to confirm message
         async def confirm(msg, reaction):
             # If edit or delete, remove old messages
-            if str(reaction) == "✏️":
-                await ctx.send(f"```{ctx.message.content}```")
             if str(reaction) in {"❌", "✏️"}:
-                await self.remove_msgs(*messages, msg, ctx.message)
+                await self.remove_msgs(*messages, msg)
+
+                if str(reaction) == "✏️":
+                    edit_msg: discord.Message = await ctx.fetch_message(ctx.message.id)
+                    await ctx.bot.process_commands(edit_msg)
                 return
 
             # Copy all messages
@@ -143,8 +168,8 @@ class Announcements(utils.ExecCog):
             await self.remove_msgs(*messages, msg)
 
         async def timeout(msg):
-            await ctx.send(f"Timeout. Original command:\n```{ctx.message.content}```")
-            await self.remove_msgs(*messages, msg, ctx.message)
+            await ctx.send(f"**Timeout.** Restart posting with: `WMCS!announce resume #{channel.name} {ctx.message.jump_url}`")
+            await self.remove_msgs(*messages, msg)
 
         await utils.utils.confirmation(ctx, f"Confirm posting to #{channel.name}",
                                        "🏓 will post and ping @ping party\n  ✅ will just post\n  ✏️ to edit\n  ❌ to cancel",

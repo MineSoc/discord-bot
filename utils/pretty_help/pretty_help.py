@@ -182,7 +182,7 @@ class Paginator:
             commands_list (List[commands.Command]): The list of commands in the group
         """
         page = self._new_page(
-            group.name, f"{self.prefix}{self.__command_info(group)}{self.suffix}" or ""
+            group.name, f"{self.__command_info(group)}" or ""
         )
 
         self._add_command_fields(page, group.name, commands_list)

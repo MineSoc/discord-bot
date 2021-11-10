@@ -1,12 +1,10 @@
+import inspect
+
 import discord
 from discord.ext import commands
 from discord.ext.commands import Context
 
 from asyncio.exceptions import TimeoutError
-
-
-async def nothing(*args):
-    pass
 
 
 # Check bot perms in channel argument
@@ -82,6 +80,22 @@ async def confirmation(ctx: Context, title: str, body: str, reactions, confirm_f
         r, _ = await ctx.bot.wait_for("reaction_add",
                       check=lambda r, u: r.message.id == msg.id and u == ctx.message.author and str(r.emoji) in reactions,
                       timeout=timeout)
-        await confirm_func(msg, r)
+        await pack_and_call(confirm_func, m=msg, msg=msg, message=msg, r=r, react=r, reaction=r, emoji=r)
     except TimeoutError:
-        await reject_func(msg)
+        await pack_and_call(reject_func, m=msg, msg=msg, message=msg)
+
+
+async def pack_and_call(f, **kwargs):
+    """Matches args of the confirm/reject function to the ones given"""
+    fkwargs = {}
+    for fa in inspect.signature(f).parameters:
+            fkwargs[fa] = kwargs[fa]
+    await discord.utils.maybe_coroutine(f, **fkwargs)
+
+
+async def nothing(*args):
+    pass
+
+
+async def delete_msg(msg: discord.Message):
+    await msg.delete()
