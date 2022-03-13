@@ -160,19 +160,20 @@ class Announcements(utils.ExecCog):
 
             # If pinging, find ping party role
             role = discord.utils.get(ctx.guild.roles, name="ping party")
-            if str(reaction) == "🏓" and role: await channel.send(f"<@&{role.id}>")
+            if str(reaction) == "🏓" and role: await channel.send(role.mention)
 
             await msg.clear_reactions()
             await ctx.message.add_reaction("👍")
             # Once posted, remove old messages
-            await self.remove_msgs(*messages, msg)
+            # await self.remove_msgs(*messages, msg)
+            await self.remove_msgs(msg)
 
         async def timeout(msg):
-            await ctx.send(f"**Timeout.** Restart posting with: `WMCS!announce resume #{channel.name} {ctx.message.jump_url}`")
+            await ctx.send(f"**Timeout.** Restart posting with: `WMCS!announce #{channel.name} {ctx.message.jump_url}`")
             await self.remove_msgs(*messages, msg)
 
         await utils.utils.confirmation(ctx, f"Confirm posting to #{channel.name}",
-                                       "🏓 will post and ping @ping party\n  ✅ will just post\n  ✏️ to edit\n  ❌ to cancel",
+                                       "🏓 will post and ping @ping party\n  ✅ will just post\n  ✏️ to edit (change original first)\n  ❌ to cancel",
                                        ["🏓", "✅", "✏️", "❌"], confirm, timeout, 300)
 
 
