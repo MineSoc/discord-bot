@@ -1,2 +1,5 @@
 /venvlap/
-.idea
+/.idea
+/.vscode
+/.venv
+/.env

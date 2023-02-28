@@ -1,0 +1,12 @@
+version: "3"
+
+services:
+  apollo:
+    build: .
+    environment:
+      WMCS_DISCORD_TOKEN: ${WMCS_DISCORD_TOKEN}
+    volumes:
+      - rr_data:/app/data
+
+volumes:
+  rr_data:

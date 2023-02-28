@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+discord-py = {ref = "45d498c1b76deaf3b394d17ccf56112fa691d160", git = "https://github.com/Rapptz/discord.py.git"}
+discord-components = {ref = "64a9416e4c0bad77ff8f901573f168db3b59f49e", git = "https://github.com/kiki7000/discord.py-components.git"}
+pillow = "*"
+emoji = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"
