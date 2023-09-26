@@ -84,7 +84,6 @@ async def on_command_error(ctx: Context, error: Exception):
     if reraise: raise reraise
 
 
-# Load cogs and run
 if __name__ == '__main__':
     for filename in os.listdir('./cogs'):
         if filename.endswith('.py'): bot.load_extension(f'cogs.{filename[:-3]}')
